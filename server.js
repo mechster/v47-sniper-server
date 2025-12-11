@@ -80,6 +80,10 @@ function getPrediction(history) {
     
     return { pred: rawPred, mode: "STATIC", reason: "Base Pattern" };
 }
+// --- KEEP-ALIVE ENDPOINT ---
+app.get('/', (req, res) => {
+    res.send('V47 Sniper is Awake and Running! 🚀');
+});
 
 // --- API ENDPOINT ---
 app.post('/api/predict', (req, res) => {
