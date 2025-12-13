@@ -13,8 +13,8 @@ app.use(bodyParser.json());
 const USERS = {
     "ADMIN-KEY":   { type: "ADMIN", active: true, bound_device: null },
     "DEMO-USER":   { type: "TRIAL", hands_left: 200, active: true, bound_device: null },
-    "DEMO-USER1":   { type: "TRIAL", hands_left: 100, active: true, bound_device: null },
-    "DEMO-USER2":   { type: "TRIAL", hands_left: 100, active: true, bound_device: null },
+    "DEMO-USER3":   { type: "TRIAL", hands_left: 100, active: true, bound_device: null },
+    "DEMO-USER22":   { type: "TRIAL", hands_left: 100, active: true, bound_device: null },
     // Add your paid users here...
 };
 
@@ -166,3 +166,4 @@ app.post('/api/predict', (req, res) => {
 app.get('/', (req, res) => res.send('V67 Pattern Engine Running'));
 
 app.listen(3000, () => console.log('✅ Server Active'));
+
