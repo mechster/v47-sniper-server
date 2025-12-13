@@ -1,4 +1,4 @@
-// server.js - V70: Adaptive Transition Logic
+// server.js - V71: Adaptive Confidence Engine
 const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
@@ -8,83 +8,95 @@ app.use(cors());
 app.use(bodyParser.json());
 
 // =========================================================================
-// 🔐 USER DATABASE (20 TRIAL KEYS + PAID)
+// 🔐 USER DATABASE
 // =========================================================================
 const USERS = {
     "ADMIN-KEY": { type: "ADMIN", active: true, bound_device: null },
     "DEMO-USER": { type: "TRIAL", hands_left: 5000, active: true, bound_device: null },
     "TRIAL-01":  { type: "TRIAL", hands_left: 100, active: true, bound_device: null },
-    // ... add more trial keys here ...
 };
 
 // =========================================================================
-// 🧠 V70 ADAPTIVE BRAIN
+// 🧠 V71 SMART LOGIC
 // =========================================================================
 const STATIC_PATTERN = ['P','B','P','B','B','P','B','P','P','B','P','B'];
 
 function getPrediction(history) {
-    if (history.length < 1) return { pred: STATIC_PATTERN[0], mode: "WAIT", reason: "Need Data" };
+    if (history.length < 1) return { pred: STATIC_PATTERN[0], mode: "WAIT", confidence: 0, reason: "Need Data" };
     let lastResult = history[0]; 
 
-    // --- 1. DETECT STREAK COUNT ---
-    let streakCount = 0;
-    for(let i=0; i<history.length; i++) { 
-        if(history[i] === lastResult) streakCount++; else break; 
+    // --- 1. PATTERN STRENGTH ANALYZER ---
+    // We scan the last 24 hands to see which pattern is "Dominant"
+    let score22 = 0; // P P B B
+    let score21 = 0; // P P B
+    let scorePing = 0; // P B P B
+
+    // Scan 2-2
+    for(let i=0; i<Math.min(history.length, 24); i+=4) {
+        if(i+4 < history.length && history[i]===history[i+1] && history[i]!==history[i+2] && history[i+2]===history[i+3]) score22++;
+    }
+    // Scan 2-1
+    for(let i=0; i<Math.min(history.length, 24); i+=3) {
+        if(i+3 < history.length && history[i]===history[i+1] && history[i]!==history[i+2]) score21++;
     }
 
-    // --- 2. CHECK FOR 3-3 CYCLE (CRITICAL TRANSITION) ---
-    // If we have 3 in a row, is it a 3-3 pattern (PP P BB B)?
-    // If yes, we must bet OPPOSITE (Break the streak), not Dragon.
-    if (streakCount === 3 && history.length >= 6) {
-        // Check if previous 3 were the opposite
-        let prev3 = true;
-        for(let i=3; i<6; i++) { if(history[i] === lastResult) prev3 = false; }
-        
-        if(prev3) {
-            // It looks like a 3-3 pattern. Predict SWITCH.
-            let nextPred = (lastResult === 'B' ? 'P' : 'B');
-            return { pred: nextPred, mode: "3-3 CYCLE", reason: "Cycle Switch" };
+    // --- 2. LOGIC DECISION ---
+    
+    // A. DRAGON (Streak > 3) -> ALWAYS RIDE
+    let streakCount = 0;
+    for(let i=0; i<history.length; i++) { if(history[i] === lastResult) streakCount++; else break; }
+    
+    if (streakCount >= 4) {
+        // High Confidence on strong streaks
+        return { pred: lastResult, mode: "DRAGON", confidence: 1.5, reason: `Streak ${streakCount}` };
+    }
+
+    // B. THE "2-2" TRANSITION CHECK (User's Specific Request)
+    // Scenario: ... B B P (Streak 1 of opposite color)
+    if (streakCount === 1 && history.length >= 3) {
+        // Look at previous: history[1] and history[2] are same (e.g. B B)
+        if (history[1] === history[2] && history[0] !== history[1]) {
+            // We are at the "Third Leg" of a potential 2-2. (B B P -> ?)
+            // RISK: It could be 2-1 (B B P -> B) or 2-2 (B B P -> P).
+            
+            if (score22 >= score21) {
+                // If 2-2 is more common, bet P to complete 2-2.
+                // BUT BET LOW (Defensive) because it might fail.
+                return { pred: lastResult, mode: "2-2 CHECK", confidence: 0.8, reason: "Attempt 2-2" };
+            } else {
+                // If 2-1 is more common, bet B (Switch).
+                let nextPred = (lastResult === 'B' ? 'P' : 'B');
+                return { pred: nextPred, mode: "2-1 CHECK", confidence: 0.8, reason: "Attempt 2-1" };
+            }
         }
     }
 
-    // --- 3. AGGRESSIVE DRAGON (Capture Streaks) ---
-    // User Requirement: "Dont miss streaks".
-    // If we have 3 or more (and it wasn't a 3-3 switch above), RIDE IT.
-    if (streakCount >= 3) {
-        return { pred: lastResult, mode: "DRAGON", reason: `Streak ${streakCount}` };
+    // C. THE "2-2" CONFIRMATION
+    // Scenario: ... B B P P (Streak 2)
+    if (streakCount === 2 && history.length >= 4) {
+        // Check if previous 2 were opposite (B B P P)
+        if (history[2] === history[3] && history[2] !== history[1]) {
+            // Perfect 2-2 block formed.
+            // Predict SWITCH to continue 2-2 cycle.
+            // HIGH CONFIDENCE because pattern is confirmed.
+            let nextPred = (lastResult === 'B' ? 'P' : 'B');
+            return { pred: nextPred, mode: "2-2 CYCLE", confidence: 1.5, reason: "Confirmed 2-2" };
+        }
     }
 
-    // --- 4. PATTERN SCANNER (Priority Order: 2-2 -> 2-1) ---
-    
-    // Check 2-2 (PPBB) - Length 4
-    if (history.length >= 8) {
-        let is22 = true;
-        for(let i=0; i<4; i++) { if(history[i] !== history[i+4]) is22 = false; }
-        if(is22) return { pred: history[3], mode: "2-2 CYCLE", reason: "Repeating 2-2" };
-    }
-
-    // Check 2-1 (PPB) - Length 3
-    if (history.length >= 6) {
-        let is21 = true;
-        for(let i=0; i<3; i++) { if(history[i] !== history[i+3]) is21 = false; }
-        if(is21) return { pred: history[2], mode: "2-1 CYCLE", reason: "Repeating 2-1" };
-    }
-
-    // --- 5. PING PONG (CHOP) ---
-    // If last 2 were different, assume chop continues
-    if (history.length >= 2 && history[0] !== history[1]) {
-        // Double check: If we have P B, predict P.
+    // D. PING PONG
+    if (history.length >= 3 && history[0]!==history[1] && history[1]!==history[2]) {
         let nextPred = (lastResult === 'B' ? 'P' : 'B');
-        return { pred: nextPred, mode: "PING-PONG", reason: "Chop Detected" };
+        return { pred: nextPred, mode: "PING-PONG", confidence: 1.0, reason: "Chop" };
     }
 
-    // --- 6. STATIC BACKUP ---
+    // E. DEFAULT
     let idx = history.length % STATIC_PATTERN.length;
-    return { pred: STATIC_PATTERN[idx], mode: "STATIC", reason: "Base Strategy" };
+    return { pred: STATIC_PATTERN[idx], mode: "STATIC", confidence: 1.0, reason: "Base" };
 }
 
 // =========================================================================
-// 🛡️ SECURITY
+// 🛡️ API
 // =========================================================================
 function checkAccess(key, deviceId) {
     const user = USERS[key];
@@ -121,13 +133,22 @@ app.post('/api/predict', (req, res) => {
     const check = checkAccess(key, deviceId);
     if (!check.allowed) return res.status(401).json({ error: check.msg });
     if (USERS[key].type === "TRIAL" && USERS[key].type !== "ADMIN") USERS[key].hands_left--;
+    
     const result = getPrediction(history);
-    res.json({ success: true, prediction: result.pred, mode: result.mode, reason: result.reason, status: check.msg });
+    
+    res.json({ 
+        success: true, 
+        prediction: result.pred, 
+        mode: result.mode, 
+        confidence: result.confidence, // NEW FIELD
+        reason: result.reason, 
+        status: check.msg 
+    });
 });
 
 app.get('/api/reset', (req, res) => {
     if(USERS[req.query.key]) { USERS[req.query.key].bound_device = null; res.send("Reset OK"); }
 });
 
-app.get('/', (req, res) => res.send('V70 Adaptive Server Active'));
+app.get('/', (req, res) => res.send('V71 Adaptive Server Active'));
 app.listen(3000, () => console.log('✅ Server Active'));
