@@ -1,4 +1,4 @@
-// server.js - V83: Smart V47 Logic + Inversion
+// server.js - V84: Crash-Proof + Smart Logic
 const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
@@ -17,25 +17,24 @@ const USERS = {
 };
 
 // =========================================================================
-// 🧠 V83 LOGIC: CYCLE + INVERSION (NO STATIC V24)
+// 🧠 V84 PREDICTION ENGINE (Safe Mode)
 // =========================================================================
 const STATIC_FALLBACK = ['P','B','P','B','B','P','B','P','P','B','P','B'];
 
 function getPrediction(history, lossStreak) {
-    if (history.length < 1) return { pred: 'B', mode: "WAIT" };
+    // CRASH GUARD: If history is invalid, return Wait
+    if (!Array.isArray(history) || history.length < 1) {
+        return { pred: 'B', mode: "WAIT", reason: "Waiting for Data" };
+    }
+
     let lastResult = history[0]; 
 
-    // --- 1. AUTO-INVERSION (Fix for "Predicting Opposite") ---
-    // If we lost 2 times in a row, the current pattern is WRONG.
-    // We strictly bet on the OPPOSITE of what the static logic would say,
-    // OR we just "Follow the Trend" (Last Winner).
+    // --- 1. AUTO-INVERSION ---
     if (lossStreak >= 2) {
-        // Simple Fix: If losing, just follow the shoe (Bet Last Winner)
         return { pred: lastResult, mode: "INVERSION", reason: "Anti-Loss Switch" };
     }
 
-    // --- 2. CYCLE MATCHING (V47 Logic) ---
-    // Scans for patterns length 3, 4, 5, 6
+    // --- 2. CYCLE MATCHING ---
     for (let len = 3; len <= 6; len++) {
         if (history.length >= len * 2) {
             let isMatch = true;
@@ -66,8 +65,11 @@ function getPrediction(history, lossStreak) {
 // 🛡️ API HANDLERS
 // =========================================================================
 function checkAccess(key, deviceId) {
+    if (!key) return { allowed: false, msg: "No Key Provided" };
+    
     const user = USERS[key];
     if (!user || !user.active) return { allowed: false, msg: "Invalid Key" };
+    
     if (key !== "DEMO-USER") {
         if (user.bound_device === null) user.bound_device = deviceId;
         else if (user.bound_device !== deviceId) return { allowed: false, msg: "Device Locked" };
@@ -81,22 +83,30 @@ app.post('/api/verify', (req, res) => {
 });
 
 app.post('/api/predict', (req, res) => {
-    // We accept lossStreak to trigger Inversion
-    const { history, key, deviceId, lossStreak } = req.body;
-    const check = checkAccess(key, deviceId);
-    
-    if (!check.allowed) return res.status(401).json({ error: check.msg });
+    try {
+        // SAFE DESTRUCTURING: Default to empty array if missing
+        const { history = [], key, deviceId, lossStreak = 0 } = req.body;
+        
+        const check = checkAccess(key, deviceId);
+        if (!check.allowed) return res.status(401).json({ error: check.msg });
 
-    const result = getPrediction(history, lossStreak || 0);
+        // Calculate
+        const result = getPrediction(history, lossStreak);
 
-    res.json({
-        success: true,
-        prediction: result.pred,
-        mode: result.mode,
-        reason: result.reason,
-        status: check.msg
-    });
+        res.json({
+            success: true,
+            prediction: result.pred,
+            mode: result.mode,
+            reason: result.reason,
+            status: check.msg
+        });
+
+    } catch (error) {
+        console.error("SERVER ERROR:", error);
+        // Prevent Crash response
+        res.json({ success: true, prediction: "B", mode: "RECOVER", reason: "Server Reset" });
+    }
 });
 
-app.get('/', (req, res) => res.send('V83 Smart Server Active'));
+app.get('/', (req, res) => res.send('V84 Safe Server Active'));
 app.listen(3000, () => console.log('✅ Server Active'));
