@@ -1,4 +1,4 @@
-// server.js - V77: Pure PatternV24 Engine
+// server.js - V79: Streak + PatternV24 Engine
 const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
@@ -15,20 +15,20 @@ const USERS = {
     "DEMO-USER": { type: "TRIAL", hands_left: 5000, active: true, bound_device: null },
     "TRIAL-01":  { type: "TRIAL", hands_left: 100, active: true, bound_device: null },
     "TRIAL-02":  { type: "TRIAL", hands_left: 100, active: true, bound_device: null },
+    "TRIAL-03":  { type: "TRIAL", hands_left: 100, active: true, bound_device: null },
 };
 
 // =========================================================================
-// 🧠 V77 LOGIC: PATTERNV24 + DRAGON
+// 🧠 V79 LOGIC: STREAK + PATTERNV24
 // =========================================================================
 const PATTERNV24 = ['P','B','P','B','B','P','B','P','P','B','P','B'];
 
 function getPrediction(history) {
-    // 0. Initial Safety
     if (history.length < 1) return { pred: PATTERNV24[0], mode: "WAIT" };
     let lastResult = history[0]; 
 
-    // --- 1. STREAK CATCHER (Highest Priority) ---
-    // "Don't miss streaks" - If we see 3 or more, RIDE IT.
+    // --- 1. STREAK CATCHER (Priority) ---
+    // If 3 or more of same color, RIDE IT.
     let streakCount = 0;
     for(let i=0; i<history.length; i++) { 
         if(history[i] === lastResult) streakCount++; else break; 
@@ -38,8 +38,7 @@ function getPrediction(history) {
         return { pred: lastResult, mode: "DRAGON", reason: `Streak ${streakCount}` };
     }
 
-    // --- 2. PATTERNV24 (The Core Logic) ---
-    // We strictly follow the sequence based on the hand count.
+    // --- 2. PATTERNV24 (Master Pattern) ---
     let idx = history.length % PATTERNV24.length;
     let basePred = PATTERNV24[idx];
 
@@ -52,26 +51,14 @@ function getPrediction(history) {
 function checkAccess(key, deviceId) {
     const user = USERS[key];
     if (!user || !user.active) return { allowed: false, msg: "Invalid Key" };
-    if (user.type === "ADMIN") return { allowed: true, msg: "Admin" };
-
     if (key !== "DEMO-USER") {
         if (user.bound_device === null) user.bound_device = deviceId;
         else if (user.bound_device !== deviceId) return { allowed: false, msg: "Device Locked" };
     }
-
     if (user.type === "TRIAL") {
         if (user.hands_left <= 0) return { allowed: false, msg: "Trial Ended" };
-        return { allowed: true, msg: `Trial: ${user.hands_left}` };
     }
-    
-    if (user.type === "PAID") {
-        const today = new Date();
-        const expiry = new Date(user.expires);
-        if (today > expiry) return { allowed: false, msg: "Expired" };
-        const diff = Math.ceil((expiry - today) / (86400000));
-        return { allowed: true, msg: `${diff} Days` };
-    }
-    return { allowed: false, msg: "Error" };
+    return { allowed: true, msg: "OK" };
 }
 
 app.post('/api/verify', (req, res) => {
@@ -85,7 +72,6 @@ app.post('/api/predict', (req, res) => {
     
     if (!check.allowed) return res.status(401).json({ error: check.msg });
 
-    // Deduct hand only for Trial users
     if (USERS[key].type === "TRIAL" && USERS[key].type !== "ADMIN") {
         USERS[key].hands_left--;
     }
@@ -101,9 +87,5 @@ app.post('/api/predict', (req, res) => {
     });
 });
 
-app.get('/api/reset', (req, res) => {
-    if(USERS[req.query.key]) { USERS[req.query.key].bound_device = null; res.send("Reset OK"); }
-});
-
-app.get('/', (req, res) => res.send('V77 PatternV24 Server Active'));
+app.get('/', (req, res) => res.send('V79 Hybrid Server Active'));
 app.listen(3000, () => console.log('✅ Server Active'));
