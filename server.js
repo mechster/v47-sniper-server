@@ -1,4 +1,4 @@
-// server.js - V86: Dynamic Scoring Engine
+// server.js - V87: Instant Reaction Engine
 const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
@@ -17,91 +17,43 @@ const USERS = {
 };
 
 // =========================================================================
-// 🧠 V86 LOGIC: DYNAMIC SCORING
+// 🧠 V87 LOGIC: SAME / DIFF (High Speed)
 // =========================================================================
-// We test 4 strategies on the last 12 hands. Highest score wins.
-
-function getVirtualPrediction(history, strategyType) {
-    if (history.length < 3) return null;
-    let last = history[0];
-    
-    if (strategyType === "DRAGON") {
-        // Predict same as last
-        return last;
-    }
-    if (strategyType === "PINGPONG") {
-        // Predict opposite of last
-        return (last === 'B' ? 'P' : 'B');
-    }
-    if (strategyType === "2-2") {
-        // Pattern: A A B B ...
-        // If A A B -> Predict B. 
-        // If A B -> Predict B.
-        // If A -> Predict A.
-        // Implementation: Look at last 3.
-        // B B P -> P
-        // B P P -> B
-        // P P B -> B
-        if (history[0] === history[1]) return (last === 'B' ? 'P' : 'B'); // Switch after 2
-        return last; // Stick if only 1
-    }
-    return null;
-}
+const STATIC_FALLBACK = ['P','B','P','B','B','P','B','P','P','B','P','B'];
 
 function getPrediction(history, lossStreak) {
-    if (!Array.isArray(history) || history.length < 2) return { pred: 'B', mode: "WAIT", reason: "Gathering Data" };
-    let lastResult = history[0];
+    if (!Array.isArray(history) || history.length < 2) return { pred: 'B', mode: "WAIT", reason: "Need 2 Hands" };
+    let last = history[0];      // Newest
+    let secondLast = history[1]; // Before Newest
 
     // --- 1. CRITICAL: AUTO-INVERSION ---
-    // If we are wrong 2 times in a row, the current logic is out of sync.
-    // Invert the trend immediately.
+    // If we are wrong 2 times, the "Same/Diff" logic is flipping.
+    // We invert to catch the 2-1 or 1-2 pattern.
     if (lossStreak >= 2) {
-        return { pred: lastResult, mode: "INVERT", reason: "Break Losing Streak" };
+        return { pred: last, mode: "INVERT", reason: "Anti-Loss Switch" };
     }
 
-    // --- 2. DYNAMIC SCORING (The V86 Brain) ---
-    let scoreDragon = 0;
-    let scorePingPong = 0;
-    let score22 = 0;
-
-    // Test the last 12 hands to see which logic would have won
-    // We iterate backwards from index 0 to 11
-    let limit = Math.min(history.length, 12);
+    // --- 2. THE INSTANT REACTOR ---
     
-    for (let i = 0; i < limit - 1; i++) {
-        // We pretend we are at step 'i+1' trying to predict 'i'
-        let actual = history[i];
-        let pastSlice = history.slice(i + 1); // The history known at that moment
-
-        if (getVirtualPrediction(pastSlice, "DRAGON") === actual) scoreDragon++;
-        if (getVirtualPrediction(pastSlice, "PINGPONG") === actual) scorePingPong++;
-        if (getVirtualPrediction(pastSlice, "2-2") === actual) score22++;
+    // CASE A: STREAK (Last 2 were same) -> PREDICT SAME
+    // Example: P P -> Predict P
+    if (last === secondLast) {
+        return { pred: last, mode: "STREAK", reason: "Repeat Detected" };
     }
 
-    // --- 3. DECISION TIME ---
-    // Select the strategy with the highest recent score
-    let bestScore = Math.max(scoreDragon, scorePingPong, score22);
-    
-    // PRIORITY: DRAGON > 2-2 > PINGPONG (If tied)
-    if (scoreDragon === bestScore && scoreDragon >= 2) {
-        return { pred: lastResult, mode: "DRAGON", reason: `Score: ${scoreDragon}` };
-    }
-    if (score22 === bestScore && score22 >= 2) {
-        let p22 = (history[0] === history[1]) ? (lastResult === 'B' ? 'P' : 'B') : lastResult;
-        return { pred: p22, mode: "2-2 CYCLE", reason: `Score: ${score22}` };
-    }
-    if (scorePingPong === bestScore && scorePingPong >= 2) {
-        let pPing = (lastResult === 'B' ? 'P' : 'B');
-        return { pred: pPing, mode: "PING-PONG", reason: `Score: ${scorePingPong}` };
+    // CASE B: CHOP (Last 2 were diff) -> PREDICT DIFF
+    // Example: P B -> Predict P
+    if (last !== secondLast) {
+        let next = (last === 'B' ? 'P' : 'B');
+        return { pred: next, mode: "CHOP", reason: "Switch Detected" };
     }
 
-    // --- 4. FALLBACK (If scores are low/zero) ---
-    // Default to following the last result (Mini Streak)
-    return { pred: lastResult, mode: "DEFAULT", reason: "Low Confidence" };
+    // --- 3. FALLBACK ---
+    return { pred: last, mode: "SAFE", reason: "Default" };
 }
 
 // =========================================================================
-// 🛡️ API
+// 🛡️ API HANDLERS
 // =========================================================================
 function checkAccess(key, deviceId) {
     if (!key) return { allowed: false, msg: "No Key" };
@@ -132,5 +84,5 @@ app.post('/api/predict', (req, res) => {
     }
 });
 
-app.get('/', (req, res) => res.send('V86 Dynamic Server'));
+app.get('/', (req, res) => res.send('V87 Speed Server'));
 app.listen(3000, () => console.log('✅ Server Active'));
