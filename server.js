@@ -1,4 +1,4 @@
-// server.js - V88: Structured 2-2 Cycle + Late Streak
+// server.js - V89: Sniper Mode (Wait Streak 1-4, Ride 5)
 const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
@@ -17,17 +17,14 @@ const USERS = {
 };
 
 // =========================================================================
-// 🧠 V88 LOGIC: 2-2 STRUCTURE + LATE STREAK
+// 🧠 V89 LOGIC: SNIPER MODE
 // =========================================================================
-const STATIC_FALLBACK = ['P','B','P','B','B','P','B','P','P','B','P','B'];
 
 function getPrediction(history, lossStreak) {
-    if (!Array.isArray(history) || history.length < 1) return { pred: 'B', mode: "WAIT", reason: "Need Data" };
+    if (!Array.isArray(history) || history.length < 1) return { pred: 'B', mode: "WAIT", reason: "Gathering Data" };
     let last = history[0]; 
 
     // --- 1. CRITICAL: AUTO-INVERSION ---
-    // If the 2-2 logic fails twice (e.g., table is actually Ping Pong or Chaos),
-    // we INVERT to sync with the reality.
     if (lossStreak >= 2) {
         return { pred: last, mode: "INVERT", reason: "Anti-Loss Switch" };
     }
@@ -38,50 +35,57 @@ function getPrediction(history, lossStreak) {
         if(history[i] === last) streak++; else break; 
     }
 
-    // --- 3. SAFETY: PING-PONG DETECTION ---
-    // If the last 4 hands were strictly chop (P B P B), we MUST play Ping-Pong.
-    // The "2-2 Logic" (Rule #1 below) would destroy us in Ping-Pong.
-    if (history.length >= 4) {
-        if (history[0]!=history[1] && history[1]!=history[2] && history[2]!=history[3]) {
-            let next = (last === 'B' ? 'P' : 'B');
-            return { pred: next, mode: "PING-PONG", reason: "Chop Detected" };
+    // --- 3. PATTERN RECOGNITION (Exceptions to "Wait") ---
+
+    // A. STRICT PING-PONG (Must see P B P ...)
+    // If we are at Streak 1 (e.g. B), check if prev was P, and prev-prev was B.
+    if (streak === 1 && history.length >= 3) {
+        // History: B(0) P(1) B(2) ...
+        if (history[0]!==history[1] && history[1]!==history[2]) {
+             let next = (last === 'B' ? 'P' : 'B');
+             return { pred: next, mode: "PING-PONG", reason: "Confirmed Chop" };
         }
     }
 
-    // --- 4. THE 2-2 / LATE STREAK LOGIC ---
+    // B. STRICT 2-2 CYCLE (Must see BB PP ...)
+    // If we are at Streak 2 (e.g. BB), check if prev was PP.
+    if (streak === 2 && history.length >= 4) {
+        // History: B(0) B(1) P(2) P(3) ...
+        if (history[0]===history[1] && history[2]===history[3] && history[1]!==history[2]) {
+             let next = (last === 'B' ? 'P' : 'B');
+             return { pred: next, mode: "2-2 CYCLE", reason: "Confirmed 2-2" };
+        }
+    }
 
-    // RULE A: Streak is 1 (e.g., ... P B)
-    // Goal: Make it a pair (2-2).
-    // Predict: SAME (B)
+    // --- 4. SNIPER STREAK LOGIC (Your Request) ---
+
+    // Streak 1: WAIT. (Don't guess Pair vs Chop).
     if (streak === 1) {
-        return { pred: last, mode: "PAIRING", reason: "Targeting 2-2" };
+        return { pred: last, mode: "WAIT", reason: "Streak 1 - Unsure" };
     }
 
-    // RULE B: Streak is 2 (e.g., ... P B B)
-    // Goal: Cut the pair (2-2).
-    // Predict: SWITCH (P)
+    // Streak 2: WAIT. (Don't try to cut, unless verified 2-2 above).
     if (streak === 2) {
-        let next = (last === 'B' ? 'P' : 'B');
-        return { pred: next, mode: "CUT-2", reason: "Targeting 2-2" };
+        return { pred: last, mode: "WAIT", reason: "Streak 2 - Unsure" };
     }
 
-    // RULE C: Streak is 3 (e.g., ... B B B)
-    // Goal: Still assume it's not a dragon yet (User request).
-    // Predict: SWITCH (P)
+    // Streak 3: WAIT. (Don't cut).
     if (streak === 3) {
-        let next = (last === 'B' ? 'P' : 'B');
-        return { pred: next, mode: "CUT-3", reason: "Wait for Streak > 4" };
+        return { pred: last, mode: "WAIT", reason: "Streak 3 - Waiting" };
     }
 
-    // RULE D: Streak is 4+ (e.g., ... B B B B)
-    // Goal: Now we believe the Dragon.
-    // Predict: SAME (B)
-    if (streak >= 4) {
-        return { pred: last, mode: "DRAGON", reason: "Streak > 4" };
+    // Streak 4: WAIT. (Don't cut).
+    if (streak === 4) {
+        return { pred: last, mode: "WAIT", reason: "Streak 4 - Waiting" };
     }
 
-    // Fallback
-    return { pred: last, mode: "SAFE", reason: "Default" };
+    // Streak 5+: RIDE THE DRAGON.
+    if (streak >= 5) {
+        return { pred: last, mode: "DRAGON", reason: "Streak 5+ Detected" };
+    }
+
+    // Default
+    return { pred: last, mode: "WAIT", reason: "No Signal" };
 }
 
 // =========================================================================
@@ -112,9 +116,9 @@ app.post('/api/predict', (req, res) => {
         const result = getPrediction(history, lossStreak);
         res.json({ success: true, prediction: result.pred, mode: result.mode, reason: result.reason });
     } catch (e) {
-        res.json({ success: true, prediction: "B", mode: "SAFE", reason: "Error" });
+        res.json({ success: true, prediction: "B", mode: "WAIT", reason: "Error" });
     }
 });
 
-app.get('/', (req, res) => res.send('V88 2-2 Logic Server'));
+app.get('/', (req, res) => res.send('V89 Sniper Server'));
 app.listen(3000, () => console.log('✅ Server Active'));
