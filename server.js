@@ -1,4 +1,4 @@
-// server.js - V91: Instant Inversion (1 Loss Flip)
+// server.js - V92: Ping-Pong Defender + Smart Switch
 const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
@@ -17,46 +17,41 @@ const USERS = {
 };
 
 // =========================================================================
-// 🧠 V91 LOGIC: QUICK FLIP
+// 🧠 V92 LOGIC: SMART STRUCTURE
 // =========================================================================
-const STATIC_FALLBACK = ['P','B','P','B','B','P','B','P','P','B','P','B'];
 
 function getPrediction(history, lossStreak) {
     if (!Array.isArray(history) || history.length < 1) return { pred: 'B', mode: "WAIT", reason: "Gathering Data" };
-    let last = history[0]; 
-
-    // --- 1. INSTANT INVERSION (User Request) ---
-    // If we lost even ONCE, we assume our current logic is wrong.
-    // We immediately bet against our previous logic (or follow the trend).
-    // Simple way: "Follow the Winner" of the loss.
-    if (lossStreak >= 1) {
-        return { pred: last, mode: "INVERT", reason: "Quick Flip" };
-    }
-
-    // --- 2. STANDARD PATTERN LOGIC (When Winning) ---
     
-    // Check Streak 3+
-    let streak = 0;
-    for(let i=0; i<history.length; i++) { if(history[i] === last) streak++; else break; }
-    if (streak >= 3) return { pred: last, mode: "DRAGON", reason: "Streak 3+" };
+    let last = history[0]; 
+    let secondLast = history.length > 1 ? history[1] : null;
 
-    // Check Chop
-    if (history.length >= 2 && history[0] !== history[1]) {
-        let next = (last === 'B' ? 'P' : 'B');
-        return { pred: next, mode: "CHOP", reason: "Ping-Pong" };
-    }
-
-    // Check 2-2
-    if (history.length >= 4) {
-        if (history[0]===history[1] && history[2]===history[3] && history[1]!==history[2]) {
-             let next = (last === 'B' ? 'P' : 'B');
-             return { pred: next, mode: "2-2 CYCLE", reason: "Structure" };
+    // --- 1. SMART SWITCH (The Fix) ---
+    // If we just lost, don't blindly follow. Check the texture.
+    if (lossStreak >= 1) {
+        
+        // CHECK PING-PONG (P B or B P)
+        if (secondLast && last !== secondLast) {
+            // We just lost on a switch. It's likely Ping-Pong.
+            // DO NOT follow the winner. Bet OPPOSITE of the winner.
+            let next = (last === 'B' ? 'P' : 'B');
+            return { pred: next, mode: "PING-PONG", reason: "Defending Chop" };
         }
+
+        // CHECK STREAK (B B or P P)
+        if (secondLast && last === secondLast) {
+            // We just lost on a repeat. It's likely a Dragon starting.
+            // Follow the winner.
+            return { pred: last, mode: "DRAGON", reason: "Defending Streak" };
+        }
+        
+        // Default Invert if no clear data
+        return { pred: last, mode: "INVERT", reason: "Standard Switch" };
     }
 
-    // Fallback
-    let idx = history.length % STATIC_FALLBACK.length;
-    return { pred: STATIC_FALLBACK[idx], mode: "BASE", reason: "Standard" };
+    // --- 2. STANDARD PLAY (When Winning) ---
+    // Default: Follow the trend (Ride the Dragon)
+    return { pred: last, mode: "RIDE", reason: "Trend Following" };
 }
 
 // =========================================================================
@@ -91,5 +86,5 @@ app.post('/api/predict', (req, res) => {
     }
 });
 
-app.get('/', (req, res) => res.send('V91 Invert Server'));
+app.get('/', (req, res) => res.send('V92 Ping-Pong Defender'));
 app.listen(3000, () => console.log('✅ Server Active'));
