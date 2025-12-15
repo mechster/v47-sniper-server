@@ -1,4 +1,4 @@
-// server.js - V89: Sniper Mode (Wait Streak 1-4, Ride 5)
+// server.js - V90: Aggressive Streak 3 + Pattern Safety
 const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
@@ -17,7 +17,7 @@ const USERS = {
 };
 
 // =========================================================================
-// 🧠 V89 LOGIC: SNIPER MODE
+// 🧠 V90 LOGIC: STREAK 3 ENTRY + PATTERNS
 // =========================================================================
 
 function getPrediction(history, lossStreak) {
@@ -35,53 +35,40 @@ function getPrediction(history, lossStreak) {
         if(history[i] === last) streak++; else break; 
     }
 
-    // --- 3. PATTERN RECOGNITION (Exceptions to "Wait") ---
+    // --- 3. PATTERN RECOGNITION (Priority) ---
 
-    // A. STRICT PING-PONG (Must see P B P ...)
-    // If we are at Streak 1 (e.g. B), check if prev was P, and prev-prev was B.
+    // A. PING-PONG (P B P ...)
     if (streak === 1 && history.length >= 3) {
-        // History: B(0) P(1) B(2) ...
         if (history[0]!==history[1] && history[1]!==history[2]) {
              let next = (last === 'B' ? 'P' : 'B');
              return { pred: next, mode: "PING-PONG", reason: "Confirmed Chop" };
         }
     }
 
-    // B. STRICT 2-2 CYCLE (Must see BB PP ...)
-    // If we are at Streak 2 (e.g. BB), check if prev was PP.
+    // B. 2-2 CYCLE (BB PP ...)
     if (streak === 2 && history.length >= 4) {
-        // History: B(0) B(1) P(2) P(3) ...
         if (history[0]===history[1] && history[2]===history[3] && history[1]!==history[2]) {
              let next = (last === 'B' ? 'P' : 'B');
              return { pred: next, mode: "2-2 CYCLE", reason: "Confirmed 2-2" };
         }
     }
 
-    // --- 4. SNIPER STREAK LOGIC (Your Request) ---
+    // --- 4. AGGRESSIVE STREAK LOGIC (V90 Update) ---
 
-    // Streak 1: WAIT. (Don't guess Pair vs Chop).
+    // Streak 1: WAIT. (Could be pair, could be chop).
     if (streak === 1) {
         return { pred: last, mode: "WAIT", reason: "Streak 1 - Unsure" };
     }
 
-    // Streak 2: WAIT. (Don't try to cut, unless verified 2-2 above).
+    // Streak 2: WAIT. (Could be 2-2, could be 2-1).
     if (streak === 2) {
         return { pred: last, mode: "WAIT", reason: "Streak 2 - Unsure" };
     }
 
-    // Streak 3: WAIT. (Don't cut).
-    if (streak === 3) {
-        return { pred: last, mode: "WAIT", reason: "Streak 3 - Waiting" };
-    }
-
-    // Streak 4: WAIT. (Don't cut).
-    if (streak === 4) {
-        return { pred: last, mode: "WAIT", reason: "Streak 4 - Waiting" };
-    }
-
-    // Streak 5+: RIDE THE DRAGON.
-    if (streak >= 5) {
-        return { pred: last, mode: "DRAGON", reason: "Streak 5+ Detected" };
+    // Streak 3+: RIDE THE DRAGON (Aggressive Entry)
+    // We enter here now instead of waiting for 5.
+    if (streak >= 3) {
+        return { pred: last, mode: "DRAGON", reason: "Streak 3+ Detected" };
     }
 
     // Default
@@ -120,5 +107,5 @@ app.post('/api/predict', (req, res) => {
     }
 });
 
-app.get('/', (req, res) => res.send('V89 Sniper Server'));
+app.get('/', (req, res) => res.send('V90 Aggressive Server'));
 app.listen(3000, () => console.log('✅ Server Active'));
