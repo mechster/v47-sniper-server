@@ -1,4 +1,4 @@
-// server.js - V90: Aggressive Streak 3 + Pattern Safety
+// server.js - V91: Instant Inversion (1 Loss Flip)
 const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
@@ -17,62 +17,46 @@ const USERS = {
 };
 
 // =========================================================================
-// 🧠 V90 LOGIC: STREAK 3 ENTRY + PATTERNS
+// 🧠 V91 LOGIC: QUICK FLIP
 // =========================================================================
+const STATIC_FALLBACK = ['P','B','P','B','B','P','B','P','P','B','P','B'];
 
 function getPrediction(history, lossStreak) {
     if (!Array.isArray(history) || history.length < 1) return { pred: 'B', mode: "WAIT", reason: "Gathering Data" };
     let last = history[0]; 
 
-    // --- 1. CRITICAL: AUTO-INVERSION ---
-    if (lossStreak >= 2) {
-        return { pred: last, mode: "INVERT", reason: "Anti-Loss Switch" };
+    // --- 1. INSTANT INVERSION (User Request) ---
+    // If we lost even ONCE, we assume our current logic is wrong.
+    // We immediately bet against our previous logic (or follow the trend).
+    // Simple way: "Follow the Winner" of the loss.
+    if (lossStreak >= 1) {
+        return { pred: last, mode: "INVERT", reason: "Quick Flip" };
     }
 
-    // --- 2. CALCULATE CURRENT STREAK ---
+    // --- 2. STANDARD PATTERN LOGIC (When Winning) ---
+    
+    // Check Streak 3+
     let streak = 0;
-    for(let i=0; i<history.length; i++) { 
-        if(history[i] === last) streak++; else break; 
+    for(let i=0; i<history.length; i++) { if(history[i] === last) streak++; else break; }
+    if (streak >= 3) return { pred: last, mode: "DRAGON", reason: "Streak 3+" };
+
+    // Check Chop
+    if (history.length >= 2 && history[0] !== history[1]) {
+        let next = (last === 'B' ? 'P' : 'B');
+        return { pred: next, mode: "CHOP", reason: "Ping-Pong" };
     }
 
-    // --- 3. PATTERN RECOGNITION (Priority) ---
-
-    // A. PING-PONG (P B P ...)
-    if (streak === 1 && history.length >= 3) {
-        if (history[0]!==history[1] && history[1]!==history[2]) {
-             let next = (last === 'B' ? 'P' : 'B');
-             return { pred: next, mode: "PING-PONG", reason: "Confirmed Chop" };
-        }
-    }
-
-    // B. 2-2 CYCLE (BB PP ...)
-    if (streak === 2 && history.length >= 4) {
+    // Check 2-2
+    if (history.length >= 4) {
         if (history[0]===history[1] && history[2]===history[3] && history[1]!==history[2]) {
              let next = (last === 'B' ? 'P' : 'B');
-             return { pred: next, mode: "2-2 CYCLE", reason: "Confirmed 2-2" };
+             return { pred: next, mode: "2-2 CYCLE", reason: "Structure" };
         }
     }
 
-    // --- 4. AGGRESSIVE STREAK LOGIC (V90 Update) ---
-
-    // Streak 1: WAIT. (Could be pair, could be chop).
-    if (streak === 1) {
-        return { pred: last, mode: "WAIT", reason: "Streak 1 - Unsure" };
-    }
-
-    // Streak 2: WAIT. (Could be 2-2, could be 2-1).
-    if (streak === 2) {
-        return { pred: last, mode: "WAIT", reason: "Streak 2 - Unsure" };
-    }
-
-    // Streak 3+: RIDE THE DRAGON (Aggressive Entry)
-    // We enter here now instead of waiting for 5.
-    if (streak >= 3) {
-        return { pred: last, mode: "DRAGON", reason: "Streak 3+ Detected" };
-    }
-
-    // Default
-    return { pred: last, mode: "WAIT", reason: "No Signal" };
+    // Fallback
+    let idx = history.length % STATIC_FALLBACK.length;
+    return { pred: STATIC_FALLBACK[idx], mode: "BASE", reason: "Standard" };
 }
 
 // =========================================================================
@@ -107,5 +91,5 @@ app.post('/api/predict', (req, res) => {
     }
 });
 
-app.get('/', (req, res) => res.send('V90 Aggressive Server'));
+app.get('/', (req, res) => res.send('V91 Invert Server'));
 app.listen(3000, () => console.log('✅ Server Active'));
