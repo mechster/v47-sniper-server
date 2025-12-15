@@ -1,4 +1,4 @@
-// server.js - V93: Pattern First (No Guessing)
+// server.js - V94: Pattern First (Stable)
 const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
@@ -17,16 +17,14 @@ const USERS = {
 };
 
 // =========================================================================
-// 🧠 V93 LOGIC: STRICT PATTERNS ONLY
+// 🧠 V94 LOGIC: PATTERNS ONLY (No Guessing)
 // =========================================================================
 
 function getPrediction(history, lossStreak) {
     if (!Array.isArray(history) || history.length < 3) return { pred: 'B', mode: "WAIT", reason: "Gathering Data" };
     let last = history[0]; 
 
-    // --- 1. LOSS REACTION ---
-    // If we lose 2 times, the pattern has clearly shifted. 
-    // Invert the last result to catch the new flow.
+    // --- 1. LOSS REACTION (Auto-Invert) ---
     if (lossStreak >= 2) {
         return { pred: last, mode: "INVERT", reason: "Anti-Loss Switch" };
     }
@@ -34,23 +32,17 @@ function getPrediction(history, lossStreak) {
     // --- 2. PATTERN RECOGNITION ---
 
     // A. PING-PONG (P B P -> Predict B)
-    // Checks last 3 hands: [0]!=[1] AND [1]!=[2]
     if (history[0] !== history[1] && history[1] !== history[2]) {
         let next = (last === 'B' ? 'P' : 'B');
         return { pred: next, mode: "PING-PONG", reason: "Chop Detected" };
     }
 
     // B. 2-2 CYCLE (B B P -> Predict P)
-    // Checks if we have a "Pair then Single". Goal: Complete the second pair.
-    // Logic: [0]!=[1] (Change happened) AND [1]==[2] (Previous was pair)
     if (history[0] !== history[1] && history[1] === history[2]) {
-        // We have [Change] after [Pair]. 
-        // Example: P(0) B(1) B(2). We want P next.
         return { pred: last, mode: "2-2 CYCLE", reason: "Completing Pair" };
     }
 
     // C. STREAK 3+ (B B B -> Predict B)
-    // Only ride if streak is established (3 or more).
     let streak = 0;
     for(let i=0; i<history.length; i++) { if(history[i] === last) streak++; else break; }
     
@@ -59,8 +51,6 @@ function getPrediction(history, lossStreak) {
     }
 
     // --- 3. SAFETY NET ---
-    // If none of the above match, the table is undefined (e.g. Streak 2).
-    // DO NOT BET.
     return { pred: last, mode: "WAIT", reason: "No Clear Pattern" };
 }
 
@@ -96,5 +86,5 @@ app.post('/api/predict', (req, res) => {
     }
 });
 
-app.get('/', (req, res) => res.send('V93 Pattern First Server'));
+app.get('/', (req, res) => res.send('V94 Smart Martingale Server'));
 app.listen(3000, () => console.log('✅ Server Active'));
