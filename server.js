@@ -1,14 +1,14 @@
-// server.js - V106: Action Engine (Stable)
+// server.js - V108 Cloud Edition
 const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
 
 const app = express();
-app.use(cors());
+app.use(cors()); // Allows your phone to talk to this server
 app.use(bodyParser.json());
 
 // =========================================================================
-// 🧠 V106 LOGIC: FORCED CONSENSUS
+// 🧠 LOGIC: FORCED CONSENSUS (V106)
 // =========================================================================
 const PATTERN_V43 = ['P','B','P','B','B','P','B','P','P','B','P','B'];
 
@@ -56,17 +56,8 @@ function getPrediction(history) {
     };
 }
 
-// =========================================================================
-// 🛡️ API
-// =========================================================================
-function checkAccess(key, deviceId) {
-    if (!key) return { allowed: false, msg: "No Key" };
-    return { allowed: true, msg: "OK" };
-}
-
-app.post('/api/verify', (req, res) => {
-    res.json({ success: true, message: "OK" });
-});
+// API Routes
+app.post('/api/verify', (req, res) => res.json({ success: true, message: "Cloud Active" }));
 
 app.post('/api/predict', (req, res) => {
     try {
@@ -78,5 +69,6 @@ app.post('/api/predict', (req, res) => {
     }
 });
 
-app.get('/', (req, res) => res.send('V106 Server Active'));
-app.listen(3000, () => console.log('✅ Server Active'));
+// Cloud Port Listener (Required for Glitch/Render)
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`✅ Cloud Server Active on Port ${PORT}`));
