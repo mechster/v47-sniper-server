@@ -1,4 +1,4 @@
-// GENIE V114 SERVER - UNIVERSAL CONSENSUS
+// GENIE V115 SERVER - STRICT CHOP LOGIC
 const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
@@ -8,7 +8,7 @@ app.use(cors({ origin: '*' }));
 app.use(bodyParser.json());
 
 // =========================================================================
-// 🧠 LOGIC: CONSENSUS ENGINE
+// 🧠 LOGIC: CONSENSUS + STRICT CHOP GATE
 // =========================================================================
 const PATTERN_V43 = ['P','B','P','B','B','P','B','P','P','B','P','B'];
 
@@ -17,6 +17,7 @@ function getPrediction(history) {
         return { pred: "B", mode: "CALIBRATING", reason: "Need 5 Hands" };
     }
 
+    // 1. SCORING (Who is winning?)
     let scores = { trend: 0, chop: 0, v43: 0 };
     let lookback = Math.min(history.length - 1, 6); 
     
@@ -36,13 +37,36 @@ function getPrediction(history) {
         if (PATTERN_V43[pIdx] === actual) scores.v43++;
     }
 
+    // 2. QUALIFICATION CHECKS
+    // Rule: "GO CHOP ONLY AFTER PBP OR BPB"
+    // We need h[0]!=h[1] AND h[1]!=h[2]
+    let chopQualified = false;
+    if (history.length >= 3) {
+        if (history[0] !== history[1] && history[1] !== history[2]) {
+            chopQualified = true;
+        }
+    }
+
+    // 3. SELECT WINNER
     let bestScore = -1;
-    let bestStrat = "TREND"; 
+    let bestStrat = "TREND"; // Default fallback
 
+    // Eval V43
     if (scores.v43 >= bestScore) { bestScore = scores.v43; bestStrat = "V43"; }
-    if (scores.chop >= bestScore) { bestScore = scores.chop; bestStrat = "CHOP"; }
-    if (scores.trend > bestScore) { bestScore = scores.trend; bestStrat = "TREND"; } 
+    
+    // Eval Chop (ONLY IF QUALIFIED)
+    if (chopQualified && scores.chop >= bestScore) { 
+        bestScore = scores.chop; 
+        bestStrat = "CHOP"; 
+    }
+    
+    // Eval Trend
+    if (scores.trend > bestScore) { 
+        bestScore = scores.trend; 
+        bestStrat = "TREND"; 
+    } 
 
+    // 4. GENERATE PREDICTION
     let last = history[0];
     let finalPred = null;
     
@@ -61,7 +85,7 @@ function getPrediction(history) {
 }
 
 // API Routes
-app.get('/', (req, res) => res.send('✅ Genie V114 Brain Active'));
+app.get('/', (req, res) => res.send('✅ Genie V115 Strict Chop Active'));
 app.post('/api/verify', (req, res) => res.json({ success: true, message: "Connected" }));
 
 app.post('/api/predict', (req, res) => {
