@@ -1,4 +1,4 @@
-// server.js - V101: Pro V43 Logic Core
+// server.js - V103: Consensus Engine
 const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
@@ -8,63 +8,78 @@ app.use(cors());
 app.use(bodyParser.json());
 
 // =========================================================================
-// 🔐 USER DATABASE
-// =========================================================================
-const USERS = {
-    "ADMIN-KEY": { type: "ADMIN", active: true, bound_device: null },
-    "DEMO-USER": { type: "TRIAL", hands_left: 5000, active: true, bound_device: null },
-    "TRIAL-01":  { type: "TRIAL", hands_left: 100, active: true, bound_device: null },
-};
-
-// =========================================================================
-// 🧠 V101 (Pro V43) LOGIC ENGINE
+// 🧠 V103 LOGIC: DYNAMIC SCORING (ADAPTIVE)
 // =========================================================================
 const PATTERN_V43 = ['P','B','P','B','B','P','B','P','P','B','P','B'];
 
-function getPrediction(history, isFlipped) {
-    if (!Array.isArray(history) || history.length < 1) {
-        return { pred: PATTERN_V43[0], mode: "INIT", reason: "Starting Sequence" };
+function getPrediction(history) {
+    if (!Array.isArray(history) || history.length < 5) {
+        return { pred: "B", mode: "CALIBRATING", reason: "Need 5 Hands" };
     }
 
-    let last = history[0]; 
-    let rawPred = null;
-    let mode = "PATTERN V43";
-    let reason = "Base Sequence";
+    // 1. SCORING SYSTEM
+    // We simulate the last 6 hands to see which strategy IS winning right now.
+    let scores = {
+        trend: 0,  // Strategy A: Follow the winner (P->P)
+        chop: 0,   // Strategy B: Oppose the winner (P->B)
+        v43: 0     // Strategy C: Fixed V43 Sequence
+    };
 
-    // --- 1. DRAGON OVERRIDE (Priority 1) ---
-    let streak = 0;
-    for(let i=0; i<history.length; i++) { if(history[i] === last) streak++; else break; }
+    let lookback = Math.min(history.length - 1, 6); 
     
-    if (streak >= 6) {
-        return { pred: last, mode: "DRAGON", reason: `Streak ${streak} Override` };
+    for (let i = 0; i < lookback; i++) {
+        let targetIndex = i; // 0 is newest
+        let prevIndex = i + 1; 
+        
+        let actual = history[targetIndex];
+        let prev = history[prevIndex];
+
+        // Score Trend
+        if (prev === actual) scores.trend++;
+
+        // Score Chop
+        let opp = (prev === 'B' ? 'P' : 'B');
+        if (opp === actual) scores.chop++;
+
+        // Score V43
+        // Calculate index of V43 for that specific historical hand
+        let pIdx = (history.length - 1 - i) % PATTERN_V43.length;
+        if (PATTERN_V43[pIdx] === actual) scores.v43++;
     }
 
-    // --- 2. DEEP MIRROR SEARCH (Priority 2) ---
-    if (history.length >= 18) {
-        let matches = 0; 
-        let checks = 0;
-        for(let i=0; i<6; i++) {
-            if (history[i] && history[i+6] && history[i+12]) {
-                if (history[i] === history[i+6] && history[i+6] === history[i+12]) matches++;
-                checks++;
-            }
-        }
-        if (checks >= 3 && matches >= checks - 1) {
-            return { pred: history[5], mode: "MIRROR", reason: "18-Hand Cycle" };
-        }
+    // 2. SELECT WINNER
+    let bestScore = -1;
+    let bestStrat = null;
+    let finalPred = null;
+
+    // Compare
+    if (scores.trend > bestScore) { bestScore = scores.trend; bestStrat = "TREND"; }
+    if (scores.chop > bestScore) { bestScore = scores.chop; bestStrat = "CHOP"; } // Chop priority on tie
+    if (scores.v43 > bestScore) { bestScore = scores.v43; bestStrat = "V43"; }
+
+    // 3. GENERATE PREDICTION
+    let last = history[0];
+    
+    if (bestStrat === "TREND") {
+        finalPred = last;
+    } else if (bestStrat === "CHOP") {
+        finalPred = (last === 'B' ? 'P' : 'B');
+    } else {
+        let nextIdx = history.length % PATTERN_V43.length;
+        finalPred = PATTERN_V43[nextIdx];
     }
 
-    // --- 3. PATTERN FALLBACK ---
-    let idx = history.length % PATTERN_V43.length;
-    rawPred = PATTERN_V43[idx];
-
-    // --- 4. FLIP LOGIC ---
-    if (isFlipped) { 
-        rawPred = (rawPred === 'B' ? 'P' : 'B');
-        mode += " (FLIPPED)";
+    // 4. ADAPTATION FILTER
+    // If the best strategy is barely winning (<=50%), the table is Chaos. WAIT.
+    if (bestScore <= 3) {
+        return { pred: finalPred, mode: "WAIT", reason: "Low Accuracy (<50%)" };
     }
 
-    return { pred: rawPred, mode: mode, reason: reason };
+    return { 
+        pred: finalPred, 
+        mode: bestStrat, 
+        reason: `Confidence: ${Math.round((bestScore/6)*100)}%` 
+    };
 }
 
 // =========================================================================
@@ -72,28 +87,22 @@ function getPrediction(history, isFlipped) {
 // =========================================================================
 function checkAccess(key, deviceId) {
     if (!key) return { allowed: false, msg: "No Key" };
-    const user = USERS[key];
-    if (!user || !user.active) return { allowed: false, msg: "Invalid" };
     return { allowed: true, msg: "OK" };
 }
 
 app.post('/api/verify', (req, res) => {
-    const check = checkAccess(req.body.key, req.body.deviceId);
-    res.json({ success: check.allowed, message: check.msg });
+    res.json({ success: true, message: "OK" });
 });
 
 app.post('/api/predict', (req, res) => {
     try {
-        const { history = [], key, deviceId, isFlipped = false } = req.body;
-        const check = checkAccess(key, deviceId);
-        if (!check.allowed) return res.status(401).json({ error: check.msg });
-
-        const result = getPrediction(history, isFlipped);
+        const { history = [] } = req.body;
+        const result = getPrediction(history);
         res.json({ success: true, prediction: result.pred, mode: result.mode, reason: result.reason });
     } catch (e) {
         res.json({ success: true, prediction: "B", mode: "WAIT", reason: "Error" });
     }
 });
 
-app.get('/', (req, res) => res.send('V101 Server Active'));
+app.get('/', (req, res) => res.send('V103 Fibonacci Consensus Active'));
 app.listen(3000, () => console.log('✅ Server Active'));
