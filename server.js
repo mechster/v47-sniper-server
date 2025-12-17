@@ -1,4 +1,4 @@
-// server.js - V94: Pattern First (Stable)
+// server.js - V95: Pro V43 Logic Core
 const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
@@ -17,45 +17,73 @@ const USERS = {
 };
 
 // =========================================================================
-// 🧠 V94 LOGIC: PATTERNS ONLY (No Guessing)
+// 🧠 V95 (Pro V43) LOGIC ENGINE
 // =========================================================================
+const PATTERN_V43 = ['P','B','P','B','B','P','B','P','P','B','P','B'];
 
-function getPrediction(history, lossStreak) {
-    if (!Array.isArray(history) || history.length < 3) return { pred: 'B', mode: "WAIT", reason: "Gathering Data" };
+function getPrediction(history, isFlipped) {
+    // 0. Default State
+    if (!Array.isArray(history) || history.length < 1) {
+        return { pred: PATTERN_V43[0], mode: "INIT", reason: "Starting Sequence" };
+    }
+
     let last = history[0]; 
+    let rawPred = null;
+    let mode = "PATTERN V43";
+    let reason = "Base Sequence";
 
-    // --- 1. LOSS REACTION (Auto-Invert) ---
-    if (lossStreak >= 2) {
-        return { pred: last, mode: "INVERT", reason: "Anti-Loss Switch" };
-    }
-
-    // --- 2. PATTERN RECOGNITION ---
-
-    // A. PING-PONG (P B P -> Predict B)
-    if (history[0] !== history[1] && history[1] !== history[2]) {
-        let next = (last === 'B' ? 'P' : 'B');
-        return { pred: next, mode: "PING-PONG", reason: "Chop Detected" };
-    }
-
-    // B. 2-2 CYCLE (B B P -> Predict P)
-    if (history[0] !== history[1] && history[1] === history[2]) {
-        return { pred: last, mode: "2-2 CYCLE", reason: "Completing Pair" };
-    }
-
-    // C. STREAK 3+ (B B B -> Predict B)
+    // --- 1. DRAGON OVERRIDE (Priority 1) ---
+    // Rule: If Streak >= 6, strict follow.
     let streak = 0;
     for(let i=0; i<history.length; i++) { if(history[i] === last) streak++; else break; }
     
-    if (streak >= 3) {
-        return { pred: last, mode: "DRAGON", reason: `Streak ${streak}` };
+    if (streak >= 6) {
+        rawPred = last;
+        mode = "DRAGON";
+        reason = `Streak ${streak} Override`;
+        // Dragon ignores Flip logic in V43
+        return { pred: rawPred, mode: mode, reason: reason };
     }
 
-    // --- 3. SAFETY NET ---
-    return { pred: last, mode: "WAIT", reason: "No Clear Pattern" };
+    // --- 2. DEEP MIRROR SEARCH (Priority 2) ---
+    // Rule: Check 18-hand history for 6-hand repeats (Indices i, i+6, i+12)
+    let isMirror = false;
+    if (history.length >= 18) {
+        let matches = 0; 
+        let checks = 0;
+        for(let i=0; i<6; i++) {
+            if (history[i] && history[i+6] && history[i+12]) {
+                if (history[i] === history[i+6] && history[i+6] === history[i+12]) matches++;
+                checks++;
+            }
+        }
+        // If strong mirror found (3+ matches in 6 checks)
+        if (checks >= 3 && matches >= checks - 1) {
+            rawPred = history[5]; // Predict what happened 6 hands ago
+            mode = "MIRROR";
+            reason = "18-Hand Cycle";
+            isMirror = true;
+        }
+    }
+
+    // --- 3. PATTERN FALLBACK (Priority 3) ---
+    if (!rawPred) {
+        let idx = history.length % PATTERN_V43.length;
+        rawPred = PATTERN_V43[idx];
+    }
+
+    // --- 4. FLIP LOGIC (Auto-Inversion) ---
+    // V43 Rule: If client says "Flipped", we invert the prediction.
+    if (isFlipped && !isMirror) { // Mirror usually overrides flip, but pattern gets flipped
+        rawPred = (rawPred === 'B' ? 'P' : 'B');
+        mode += " (FLIPPED)";
+    }
+
+    return { pred: rawPred, mode: mode, reason: reason };
 }
 
 // =========================================================================
-// 🛡️ API
+// 🛡️ API HANDLERS
 // =========================================================================
 function checkAccess(key, deviceId) {
     if (!key) return { allowed: false, msg: "No Key" };
@@ -75,16 +103,16 @@ app.post('/api/verify', (req, res) => {
 
 app.post('/api/predict', (req, res) => {
     try {
-        const { history = [], key, deviceId, lossStreak = 0 } = req.body;
+        const { history = [], key, deviceId, isFlipped = false } = req.body;
         const check = checkAccess(key, deviceId);
         if (!check.allowed) return res.status(401).json({ error: check.msg });
 
-        const result = getPrediction(history, lossStreak);
+        const result = getPrediction(history, isFlipped);
         res.json({ success: true, prediction: result.pred, mode: result.mode, reason: result.reason });
     } catch (e) {
         res.json({ success: true, prediction: "B", mode: "WAIT", reason: "Error" });
     }
 });
 
-app.get('/', (req, res) => res.send('V94 Smart Martingale Server'));
+app.get('/', (req, res) => res.send('V95 Pro V43 Server'));
 app.listen(3000, () => console.log('✅ Server Active'));
