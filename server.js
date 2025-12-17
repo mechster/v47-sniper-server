@@ -1,4 +1,4 @@
-// server.js - V103: Consensus Engine
+// server.js - V105: Always Action (No Wait)
 const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
@@ -8,57 +8,49 @@ app.use(cors());
 app.use(bodyParser.json());
 
 // =========================================================================
-// 🧠 V103 LOGIC: DYNAMIC SCORING (ADAPTIVE)
+// 🧠 V105 LOGIC: FORCED CONSENSUS
 // =========================================================================
 const PATTERN_V43 = ['P','B','P','B','B','P','B','P','P','B','P','B'];
 
 function getPrediction(history) {
+    // We only need 5 hands to calculate the first score.
     if (!Array.isArray(history) || history.length < 5) {
         return { pred: "B", mode: "CALIBRATING", reason: "Need 5 Hands" };
     }
 
-    // 1. SCORING SYSTEM
-    // We simulate the last 6 hands to see which strategy IS winning right now.
-    let scores = {
-        trend: 0,  // Strategy A: Follow the winner (P->P)
-        chop: 0,   // Strategy B: Oppose the winner (P->B)
-        v43: 0     // Strategy C: Fixed V43 Sequence
-    };
-
+    // 1. SCORING SYSTEM (Last 6 Hands)
+    let scores = { trend: 0, chop: 0, v43: 0 };
     let lookback = Math.min(history.length - 1, 6); 
     
     for (let i = 0; i < lookback; i++) {
-        let targetIndex = i; // 0 is newest
-        let prevIndex = i + 1; 
-        
-        let actual = history[targetIndex];
-        let prev = history[prevIndex];
+        let actual = history[i];
+        let prev = history[i+1];
 
-        // Score Trend
+        // Trend (P->P)
         if (prev === actual) scores.trend++;
 
-        // Score Chop
+        // Chop (P->B)
         let opp = (prev === 'B' ? 'P' : 'B');
         if (opp === actual) scores.chop++;
 
-        // Score V43
-        // Calculate index of V43 for that specific historical hand
+        // V43 Pattern
         let pIdx = (history.length - 1 - i) % PATTERN_V43.length;
         if (PATTERN_V43[pIdx] === actual) scores.v43++;
     }
 
-    // 2. SELECT WINNER
+    // 2. SELECT WINNER (Forced)
+    // We do NOT check if score > 3. We just pick the highest.
     let bestScore = -1;
-    let bestStrat = null;
-    let finalPred = null;
+    let bestStrat = "TREND"; // Default fallback
 
-    // Compare
-    if (scores.trend > bestScore) { bestScore = scores.trend; bestStrat = "TREND"; }
-    if (scores.chop > bestScore) { bestScore = scores.chop; bestStrat = "CHOP"; } // Chop priority on tie
-    if (scores.v43 > bestScore) { bestScore = scores.v43; bestStrat = "V43"; }
+    if (scores.v43 >= bestScore) { bestScore = scores.v43; bestStrat = "V43"; }
+    if (scores.chop >= bestScore) { bestScore = scores.chop; bestStrat = "CHOP"; }
+    if (scores.trend > bestScore) { bestScore = scores.trend; bestStrat = "TREND"; } 
+    // Note: Ties favor Trend -> Chop -> V43 based on order above
 
     // 3. GENERATE PREDICTION
     let last = history[0];
+    let finalPred = null;
     
     if (bestStrat === "TREND") {
         finalPred = last;
@@ -69,16 +61,10 @@ function getPrediction(history) {
         finalPred = PATTERN_V43[nextIdx];
     }
 
-    // 4. ADAPTATION FILTER
-    // If the best strategy is barely winning (<=50%), the table is Chaos. WAIT.
-    if (bestScore <= 3) {
-        return { pred: finalPred, mode: "WAIT", reason: "Low Accuracy (<50%)" };
-    }
-
     return { 
         pred: finalPred, 
         mode: bestStrat, 
-        reason: `Confidence: ${Math.round((bestScore/6)*100)}%` 
+        reason: `Score: ${bestScore}/6` 
     };
 }
 
@@ -100,9 +86,9 @@ app.post('/api/predict', (req, res) => {
         const result = getPrediction(history);
         res.json({ success: true, prediction: result.pred, mode: result.mode, reason: result.reason });
     } catch (e) {
-        res.json({ success: true, prediction: "B", mode: "WAIT", reason: "Error" });
+        res.json({ success: true, prediction: "B", mode: "CALIBRATING", reason: "Error" });
     }
 });
 
-app.get('/', (req, res) => res.send('V103 Fibonacci Consensus Active'));
+app.get('/', (req, res) => res.send('V105 Action Engine Active'));
 app.listen(3000, () => console.log('✅ Server Active'));
