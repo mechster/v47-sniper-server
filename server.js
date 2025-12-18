@@ -1,4 +1,4 @@
-// GENIE V117 SERVER - TACTICAL STREAK
+// GENIE V118 SERVER - HARD PAUSE
 const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
@@ -22,7 +22,7 @@ function getPrediction(history) {
         if(history[i] === last) streak++; else break;
     }
 
-    // 2. SCORING SYSTEM (Who is winning?)
+    // 2. SCORING SYSTEM
     let scores = { trend: 0, chop: 0, v43: 0 };
     let lookback = Math.min(history.length - 1, 6); 
     
@@ -36,55 +36,49 @@ function getPrediction(history) {
         if (PATTERN_V43[pIdx] === actual) scores.v43++;
     }
 
-    // 3. SELECT BASE STRATEGY
+    // 3. SELECT STRATEGY
     let bestScore = -1;
     let bestStrat = "TREND"; 
 
-    // Default Priority: Trend > Chop > V43
     if (scores.v43 >= bestScore) { bestScore = scores.v43; bestStrat = "V43"; }
     if (scores.chop >= bestScore) { bestScore = scores.chop; bestStrat = "CHOP"; }
     if (scores.trend > bestScore) { bestScore = scores.trend; bestStrat = "TREND"; } 
 
-    // 4. APPLY "TACTICAL STREAK" OVERRIDES
+    // 4. APPLY "HARD PAUSE" RULES
     let finalPred = null;
     let mode = bestStrat;
     let forceFlat = false;
 
     if (bestStrat === "TREND") {
-        // Rule: "Stop catching streak after 2nd hand"
-        // Rule: "Catch streak after 4th hand"
-        // Rule: "Only go streak in flat bets"
-        
         if (streak === 1) {
-            // Normal Trend (Betting for 2nd)
+            // Normal Trend: Bet to catch 2nd
             finalPred = last;
         } 
         else if (streak === 2 || streak === 3) {
-            // PAUSE ZONE
-            // We do NOT bet trend here. We look for alternatives.
-            if (scores.chop >= 3) {
-                mode = "CHOP (ANTI-STREAK)";
-                finalPred = (last === 'B' ? 'P' : 'B');
-            } else if (scores.v43 >= 3) {
-                mode = "V43 (ANTI-STREAK)";
-                let nextIdx = history.length % PATTERN_V43.length;
-                finalPred = PATTERN_V43[nextIdx];
-            } else {
-                // No good alternative? WAIT.
-                return { pred: last, mode: "WAIT", reason: `Streak ${streak} Pause` };
-            }
+            // *** V118 FIX: HARD WAIT ***
+            // Do NOT try to guess Chop here. Just stop.
+            return { 
+                pred: last, // Placeholder
+                mode: "WAIT", 
+                reason: `Streak ${streak}: Observing...` 
+            };
         } 
         else if (streak >= 4) {
-            // RESUME ZONE (Dragon Catch)
+            // Resume on 5th Hand (Streak 4)
             finalPred = last;
             mode = "DRAGON (FLAT)";
-            forceFlat = true; // Tell client to use flat bet
+            forceFlat = true; 
         }
     } 
     else if (bestStrat === "CHOP") {
+        // Only bet chop if NO streak exists (Streak 1 max)
+        if (streak > 1) {
+             return { pred: last, mode: "WAIT", reason: "Chop Risky (Streak)" };
+        }
         finalPred = (last === 'B' ? 'P' : 'B');
     } 
     else {
+        // V43 Pattern
         let nextIdx = history.length % PATTERN_V43.length;
         finalPred = PATTERN_V43[nextIdx];
     }
@@ -98,7 +92,7 @@ function getPrediction(history) {
 }
 
 // API Routes
-app.get('/', (req, res) => res.send('✅ Genie V117 Tactical Active'));
+app.get('/', (req, res) => res.send('✅ Genie V118 Hard Pause Active'));
 app.post('/api/verify', (req, res) => res.json({ success: true, message: "Connected" }));
 
 app.post('/api/predict', (req, res) => {
@@ -110,7 +104,7 @@ app.post('/api/predict', (req, res) => {
             prediction: result.pred, 
             mode: result.mode, 
             reason: result.reason,
-            isFlat: result.isFlat // Send Flat Bet Flag
+            isFlat: result.isFlat
         });
     } catch (e) {
         res.json({ success: true, prediction: "B", mode: "CALIBRATING", reason: "Error" });
