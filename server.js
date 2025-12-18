@@ -1,4 +1,4 @@
-// GENIE V118 SERVER - HARD PAUSE
+// GENIE V119 SERVER - TIE FILTER
 const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
@@ -9,14 +9,17 @@ app.use(bodyParser.json());
 
 const PATTERN_V43 = ['P','B','P','B','B','P','B','P','P','B','P','B'];
 
-function getPrediction(history) {
+function getPrediction(rawHistory) {
+    // FILTER TIES: Treat them as invisible
+    const history = rawHistory.filter(h => h !== 'T');
+
     if (!Array.isArray(history) || history.length < 5) {
-        return { pred: "B", mode: "CALIBRATING", reason: "Need 5 Hands" };
+        return { pred: "B", mode: "CALIBRATING", reason: "Need 5 Clean Hands" };
     }
 
     let last = history[0];
 
-    // 1. CALCULATE CURRENT STREAK
+    // 1. CALCULATE CURRENT STREAK (Ignoring Ties)
     let streak = 0;
     for(let i=0; i<history.length; i++) {
         if(history[i] === last) streak++; else break;
@@ -44,41 +47,31 @@ function getPrediction(history) {
     if (scores.chop >= bestScore) { bestScore = scores.chop; bestStrat = "CHOP"; }
     if (scores.trend > bestScore) { bestScore = scores.trend; bestStrat = "TREND"; } 
 
-    // 4. APPLY "HARD PAUSE" RULES
+    // 4. LOGIC GATES
     let finalPred = null;
     let mode = bestStrat;
     let forceFlat = false;
 
     if (bestStrat === "TREND") {
         if (streak === 1) {
-            // Normal Trend: Bet to catch 2nd
             finalPred = last;
         } 
         else if (streak === 2 || streak === 3) {
-            // *** V118 FIX: HARD WAIT ***
-            // Do NOT try to guess Chop here. Just stop.
-            return { 
-                pred: last, // Placeholder
-                mode: "WAIT", 
-                reason: `Streak ${streak}: Observing...` 
-            };
+            // HARD PAUSE
+            return { pred: last, mode: "WAIT", reason: `Streak ${streak}: Pause` };
         } 
         else if (streak >= 4) {
-            // Resume on 5th Hand (Streak 4)
+            // RESUME
             finalPred = last;
             mode = "DRAGON (FLAT)";
             forceFlat = true; 
         }
     } 
     else if (bestStrat === "CHOP") {
-        // Only bet chop if NO streak exists (Streak 1 max)
-        if (streak > 1) {
-             return { pred: last, mode: "WAIT", reason: "Chop Risky (Streak)" };
-        }
+        if (streak > 1) return { pred: last, mode: "WAIT", reason: "Chop Risky" };
         finalPred = (last === 'B' ? 'P' : 'B');
     } 
     else {
-        // V43 Pattern
         let nextIdx = history.length % PATTERN_V43.length;
         finalPred = PATTERN_V43[nextIdx];
     }
@@ -92,7 +85,7 @@ function getPrediction(history) {
 }
 
 // API Routes
-app.get('/', (req, res) => res.send('✅ Genie V118 Hard Pause Active'));
+app.get('/', (req, res) => res.send('✅ Genie V119 Active'));
 app.post('/api/verify', (req, res) => res.json({ success: true, message: "Connected" }));
 
 app.post('/api/predict', (req, res) => {
